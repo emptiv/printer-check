@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Weekly Printer Nozzle Check</title>
+  <title>weekly printer nozzle check</title>
   <style>
     :root {
       color-scheme: light;
@@ -40,6 +40,23 @@
       flex-wrap: wrap;
       align-items: center;
       margin-bottom: 14px;
+    }
+
+    .print-number {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: #4a4741;
+    }
+
+    .print-number input {
+      width: 58px;
+      padding: 10px 8px;
+      border: 1px solid #c9c5bd;
+      border-radius: 3px;
+      font: inherit;
+      text-align: center;
     }
 
     .primary,
@@ -134,10 +151,14 @@
 
     .slot .num {
       position: absolute;
-      right: 2px;
-      bottom: -17px;
-      font-size: 9px;
-      color: #827d73;
+      left: 50%;
+      bottom: 3px;
+      padding: 2px 4px;
+      background: rgba(255, 255, 255, 0.9);
+      color: #171717;
+      font-size: 10px;
+      font-weight: 600;
+      transform: translateX(-50%);
     }
 
     @media print {
@@ -189,9 +210,13 @@
         object-fit: fill;
       }
 
-      .slot .num,
       .slot:not(.current) {
         display: none !important;
+      }
+
+      .slot .num {
+        bottom: 3px;
+        font-size: 14pt;
       }
     }
   </style>
@@ -200,8 +225,12 @@
   <main class="app">
     <section class="panel">
       <div class="controls">
-        <button class="primary" id="printBtn" type="button">Print week 1</button>
-        <button class="secondary" id="resetBtn" type="button">Start a new sheet</button>
+        <label class="print-number" for="printNumber">
+          print number
+          <input id="printNumber" type="number" min="1" max="21" step="1" value="1">
+        </label>
+        <button class="primary" id="printBtn" type="button">print 1</button>
+        <button class="secondary" id="resetBtn" type="button">new sheet</button>
         <span class="status" id="status" aria-live="polite"></span>
       </div>
 
@@ -217,15 +246,19 @@
     const STORAGE_KEY = 'nozzle-check-next-slot-v1';
 
     let nextSlot = Math.min(TOTAL_SLOTS, Math.max(0, Number(localStorage.getItem(STORAGE_KEY) || 0)));
+    let selectedSlot = Math.min(nextSlot, TOTAL_SLOTS - 1);
+    let printingSlot = null;
     let isPrinting = false;
 
     const sheet = document.getElementById('sheet');
     const status = document.getElementById('status');
     const printBtn = document.getElementById('printBtn');
     const resetBtn = document.getElementById('resetBtn');
+    const printNumber = document.getElementById('printNumber');
 
     function render() {
       sheet.innerHTML = '';
+      printNumber.value = String(selectedSlot + 1);
 
       for (let i = 0; i < TOTAL_SLOTS; i++) {
         const row = Math.floor(i / 3);
@@ -234,7 +267,7 @@
         const slot = document.createElement('div');
         slot.className = 'slot';
         if (i < nextSlot) slot.classList.add('used');
-        if (i === nextSlot) slot.classList.add('current');
+        if (i === selectedSlot) slot.classList.add('current');
 
         slot.style.left = `${((2.5 + col * 27) / 85) * 100}%`;
         slot.style.top = `${((2.5 + row * 15) / 110) * 100}%`;
@@ -246,7 +279,7 @@
 
         const num = document.createElement('span');
         num.className = 'num';
-        num.textContent = String(i + 1);
+        num.textContent = `${i + 1}`;
         slot.appendChild(num);
 
         sheet.appendChild(slot);
@@ -254,10 +287,10 @@
 
       const remaining = TOTAL_SLOTS - nextSlot;
       status.textContent = nextSlot < TOTAL_SLOTS
-        ? `Week ${nextSlot + 1} of ${TOTAL_SLOTS} · ${remaining} position${remaining === 1 ? '' : 's'} left`
-        : 'This sheet is full. Start a new sheet to continue.';
+        ? `next: week ${nextSlot + 1} of ${TOTAL_SLOTS} · ${remaining} position${remaining === 1 ? '' : 's'} left`
+        : 'this sheet is full. start a new sheet to continue.';
 
-      printBtn.textContent = nextSlot < TOTAL_SLOTS ? `Print week ${nextSlot + 1}` : 'Sheet complete';
+      printBtn.textContent = nextSlot < TOTAL_SLOTS ? `print week ${selectedSlot + 1}` : 'sheet complete';
       printBtn.disabled = nextSlot >= TOTAL_SLOTS;
     }
 
@@ -265,16 +298,31 @@
       if (!isPrinting) return;
       isPrinting = false;
 
-      if (confirm('Did the nozzle-check pattern print successfully?')) {
-        nextSlot = Math.min(TOTAL_SLOTS, nextSlot + 1);
-        localStorage.setItem(STORAGE_KEY, String(nextSlot));
+      if (confirm('did the nozzle-check pattern print successfully?')) {
+        if (printingSlot === nextSlot) {
+          nextSlot = Math.min(TOTAL_SLOTS, nextSlot + 1);
+          localStorage.setItem(STORAGE_KEY, String(nextSlot));
+        }
       }
 
+      printingSlot = null;
       render();
     }
 
+    printNumber.addEventListener('change', () => {
+      const requestedSlot = Number(printNumber.value) - 1;
+      if (!Number.isInteger(requestedSlot) || requestedSlot < 0 || requestedSlot >= TOTAL_SLOTS) {
+        render();
+        return;
+      }
+
+      selectedSlot = requestedSlot;
+      render();
+    });
+
     printBtn.addEventListener('click', () => {
       if (nextSlot >= TOTAL_SLOTS) return;
+      printingSlot = selectedSlot;
       isPrinting = true;
       window.print();
     });
@@ -283,8 +331,9 @@
     window.addEventListener('afterprint', advance);
 
     resetBtn.addEventListener('click', () => {
-      if (!confirm('Reset to Week 1? Only do this when using a fresh blank sheet.')) return;
+      if (!confirm('reset to Week 1? only do this when using a fresh blank sheet.')) return;
       nextSlot = 0;
+      selectedSlot = 0;
       localStorage.setItem(STORAGE_KEY, '0');
       render();
     });
