@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Weekly Printer Nozzle Check</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Helvetica, Arial, sans-serif;
+      color: #171717;
+      background: #e9e7e2;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 32px 16px 48px;
+    }
+
+    .app {
+      max-width: 780px;
+      margin: auto;
+    }
+
+    .panel {
+      background: #f7f6f2;
+      border: 1px solid #d5d2cb;
+      border-radius: 4px;
+      padding: 14px;
+      box-shadow: 0 18px 45px rgba(47, 43, 36, 0.08);
+    }
+
+    .controls {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+
+    .primary,
+    .secondary {
+      border-radius: 3px;
+      padding: 11px 15px;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+
+    .primary {
+      border: 1px solid #171717;
+      background: #171717;
+      color: #ffffff;
+    }
+
+    .primary:hover {
+      background: #383838;
+    }
+
+    .secondary {
+      border: 1px solid #c9c5bd;
+      background: transparent;
+      color: #4a4741;
+    }
+
+    .secondary:hover {
+      border-color: #171717;
+      color: #171717;
+    }
+
+    .primary:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .status {
+      margin-left: 4px;
+      font-size: 12px;
+      letter-spacing: 0.01em;
+      color: #6d6961;
+    }
+
+    .sheet-wrap {
+      overflow: auto;
+      padding: 18px;
+      background: #dedbd4;
+      border: 1px solid #d0ccc4;
+      border-radius: 3px;
+    }
+
+    .sheet {
+      position: relative;
+      background: #ffffff;
+      width: min(100%, 510px);
+      aspect-ratio: 8.5 / 11;
+      margin: auto;
+      box-shadow: 0 5px 16px rgba(47, 43, 36, 0.16);
+    }
+
+    .slot {
+      position: absolute;
+      width: 30.588235%;
+      height: auto;
+      aspect-ratio: 232 / 131;
+      outline: 1px dashed #c3beb4;
+      outline-offset: 2px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.15s, outline-color 0.15s;
+    }
+
+    .slot img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .slot.current {
+      outline: 2px solid #171717;
+      outline-offset: 3px;
+    }
+
+    .slot.used img {
+      opacity: 0.28;
+    }
+
+    .slot .num {
+      position: absolute;
+      right: 2px;
+      bottom: -17px;
+      font-size: 9px;
+      color: #827d73;
+    }
+
+    @media print {
+      @page {
+        size: letter portrait;
+        margin: 0;
+      }
+
+      html,
+      body {
+        width: 8.5in;
+        height: 11in;
+        margin: 0;
+        padding: 0;
+        background: #ffffff;
+      }
+
+      body * {
+        visibility: hidden !important;
+      }
+
+      .sheet,
+      .sheet * {
+        visibility: visible !important;
+      }
+
+      .sheet {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 8.5in;
+        height: 11in;
+        margin: 0;
+        box-shadow: none;
+        background: #ffffff;
+        overflow: hidden;
+      }
+
+      .slot {
+        outline: 0 !important;
+        width: 2.6in;
+        height: 1.4689655in;
+        aspect-ratio: auto;
+      }
+
+      .slot img {
+        width: 100%;
+        height: 100%;
+        object-fit: fill;
+      }
+
+      .slot .num,
+      .slot:not(.current) {
+        display: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="panel">
+      <div class="controls">
+        <button class="primary" id="printBtn" type="button">Print week 1</button>
+        <button class="secondary" id="resetBtn" type="button">Start a new sheet</button>
+        <span class="status" id="status" aria-live="polite"></span>
+      </div>
+
+      <div class="sheet-wrap">
+        <div class="sheet" id="sheet" aria-label="Letter paper preview"></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const IMAGE_SRC = 'pattern_check.jpg';
+    const TOTAL_SLOTS = 21;
+    const STORAGE_KEY = 'nozzle-check-next-slot-v1';
+
+    let nextSlot = Math.min(TOTAL_SLOTS, Math.max(0, Number(localStorage.getItem(STORAGE_KEY) || 0)));
+    let isPrinting = false;
+
+    const sheet = document.getElementById('sheet');
+    const status = document.getElementById('status');
+    const printBtn = document.getElementById('printBtn');
+    const resetBtn = document.getElementById('resetBtn');
+
+    function render() {
+      sheet.innerHTML = '';
+
+      for (let i = 0; i < TOTAL_SLOTS; i++) {
+        const row = Math.floor(i / 3);
+        const col = i % 3;
+
+        const slot = document.createElement('div');
+        slot.className = 'slot';
+        if (i < nextSlot) slot.classList.add('used');
+        if (i === nextSlot) slot.classList.add('current');
+
+        slot.style.left = `${((2.5 + col * 27) / 85) * 100}%`;
+        slot.style.top = `${((2.5 + row * 15) / 110) * 100}%`;
+
+        const img = document.createElement('img');
+        img.src = IMAGE_SRC;
+        img.alt = 'Nozzle check pattern';
+        slot.appendChild(img);
+
+        const num = document.createElement('span');
+        num.className = 'num';
+        num.textContent = String(i + 1);
+        slot.appendChild(num);
+
+        sheet.appendChild(slot);
+      }
+
+      const remaining = TOTAL_SLOTS - nextSlot;
+      status.textContent = nextSlot < TOTAL_SLOTS
+        ? `Week ${nextSlot + 1} of ${TOTAL_SLOTS} · ${remaining} position${remaining === 1 ? '' : 's'} left`
+        : 'This sheet is full. Start a new sheet to continue.';
+
+      printBtn.textContent = nextSlot < TOTAL_SLOTS ? `Print week ${nextSlot + 1}` : 'Sheet complete';
+      printBtn.disabled = nextSlot >= TOTAL_SLOTS;
+    }
+
+    function advance() {
+      if (!isPrinting) return;
+      isPrinting = false;
+
+      if (confirm('Did the nozzle-check pattern print successfully?')) {
+        nextSlot = Math.min(TOTAL_SLOTS, nextSlot + 1);
+        localStorage.setItem(STORAGE_KEY, String(nextSlot));
+      }
+
+      render();
+    }
+
+    printBtn.addEventListener('click', () => {
+      if (nextSlot >= TOTAL_SLOTS) return;
+      isPrinting = true;
+      window.print();
+    });
+
+    // Keeps the current slot active until the user confirms the print dialog has closed
+    window.addEventListener('afterprint', advance);
+
+    resetBtn.addEventListener('click', () => {
+      if (!confirm('Reset to Week 1? Only do this when using a fresh blank sheet.')) return;
+      nextSlot = 0;
+      localStorage.setItem(STORAGE_KEY, '0');
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>
